@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QIPS — Standalone Demo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f0;color:#1a1a18;font-size:13px;line-height:1.5}
+.bar{background:#1a1a18;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between}
+.bar h1{font-size:14px;font-weight:600}
+.bar p{font-size:11px;color:#888;margin-top:1px}
+.tabs{display:flex;gap:6px}
+.tab{padding:5px 14px;border-radius:16px;border:1px solid #444;background:transparent;cursor:pointer;font-size:11px;color:#aaa;transition:all .15s}
+.tab.on{background:#534AB7;border-color:#534AB7;color:#fff}
+.wrap{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 48px)}
+.side{background:#fff;border-right:1px solid #e5e3db;padding:14px;overflow-y:auto}
+.main{padding:14px;overflow-y:auto}
+.sec{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#aaa;margin:12px 0 6px}
+.card{background:#fff;border:1px solid #e5e3db;border-radius:9px;padding:12px;margin-bottom:10px}
+.mets{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px}
+.met{background:#f8f7f3;border-radius:7px;padding:9px 11px}
+.mv{font-size:19px;font-weight:600}
+.ml{font-size:10px;color:#999;margin-top:2px}
+.md{font-size:10px;font-weight:500;margin-top:3px}
+.ctrl{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.ctrl label{font-size:11px;color:#666;min-width:90px}
+.ctrl input[type=range]{flex:1;accent-color:#534AB7}
+.ctrl .cv{font-size:11px;font-weight:600;min-width:28px;text-align:right}
+btn,.btn{display:block;width:100%;margin:4px 0;padding:8px;border-radius:7px;border:1px solid #d5d3cb;background:#fff;cursor:pointer;font-size:12px;font-weight:500;color:#1a1a18}
+.btn:hover{background:#f5f5f0}
+.btn.go{background:#534AB7;color:#fff;border-color:#534AB7}
+.btn.go:hover{background:#3C3489}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{text-align:left;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#aaa;padding:5px 7px;border-bottom:1px solid #e5e3db}
+td{padding:6px 7px;border-bottom:1px solid #f0ede8;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.badge{display:inline-block;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:600}
+.pc{background:#FCEBEB;color:#791F1F}.ph{background:#EEEDFE;color:#3C3489}
+.pm{background:#FAEEDA;color:#633806}.pl{background:#EAF3DE;color:#27500A}
+.sc{color:#888}.sr{color:#185FA5;font-weight:600}.sd{color:#3B6D11;font-weight:600}.sl{color:#A32D2D;font-weight:600}
+.pt{height:5px;background:#eee;border-radius:3px;overflow:hidden;width:64px;display:inline-block}
+.pf{height:100%;border-radius:3px;transition:width .25s}
+.nc{background:#f8f7f3;border-radius:7px;padding:9px 11px;margin-bottom:6px}
+.bt{height:5px;background:#e5e3db;border-radius:3px;overflow:hidden;margin:2px 0}
+.bf{height:100%;border-radius:3px;transition:width .35s}
+#logbox{font-family:monospace;font-size:10px;background:#1a1a18;color:#9a9;padding:9px;border-radius:7px;height:110px;overflow-y:auto}
+.le{padding:1px 0;border-bottom:1px solid #222}
+.ts{color:#555}.li{color:#85B7EB}.lo{color:#97C459}.lw{color:#EF9F27}
+.cgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.cc{background:#f8f7f3;border-radius:7px;padding:9px;border:2px solid transparent}
+.cc.best{border-color:#534AB7}
+.cc h4{font-size:11px;font-weight:700;margin-bottom:6px}
+.cr{display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px}
+.cr span:first-child{color:#888}
+</style>
+</head>
+<body>
+<div class="bar">
+  <div><h1>QIPS Scheduler — Standalone Demo</h1><p>Quantum-Inspired Priority Scheduler · No server required</p></div>
+  <div class="tabs">
+    <button class="tab on" onclick="setMode('QIPS')" id="t-QIPS">QIPS</button>
+    <button class="tab" onclick="setMode('FIFO')" id="t-FIFO">FIFO</button>
+    <button class="tab" onclick="setMode('Fair')" id="t-Fair">Fair</button>
+    <button class="tab" onclick="setMode('Capacity')" id="t-Capacity">Capacity</button>
+  </div>
+</div>
+
+<div class="wrap">
+<div class="side">
+  <div class="sec">Workload</div>
+  <div class="ctrl"><label>Jobs (n)</label><input type="range" min="3" max="10" value="6" step="1" id="sl-j" oninput="cv('vj',this.value)"><span class="cv" id="vj">6</span></div>
+  <button class="btn" onclick="resetSim()">New workload</button>
+
+  <div class="sec" id="qp-sec">QPSO parameters</div>
+  <div id="qp-ctrls">
+    <div class="ctrl"><label>Particles</label><input type="range" min="5" max="60" value="30" step="5" id="sl-p" oninput="cv('vp',this.value)"><span class="cv" id="vp">30</span></div>
+    <div class="ctrl"><label>Iterations</label><input type="range" min="20" max="300" value="100" step="10" id="sl-it" oninput="cv('vit',this.value)"><span class="cv" id="vit">100</span></div>
+    <div class="ctrl"><label>Beta (β)</label><input type="range" min="20" max="120" value="75" step="5" id="sl-b" oninput="cv('vb',(this.value/100).toFixed(2))"><span class="cv" id="vb">0.75</span></div>
+  </div>
+
+  <div class="sec">Fitness weights</div>
+  <div class="ctrl"><label>w₁ makespan</label><input type="range" min="0" max="20" value="10" step="1" id="w1" oninput="cv('lw1',(this.value/10).toFixed(1))"><span class="cv" id="lw1">1.0</span></div>
+  <div class="ctrl"><label>w₂ latency</label><input type="range" min="0" max="20" value="10" step="1" id="w2" oninput="cv('lw2',(this.value/10).toFixed(1))"><span class="cv" id="lw2">1.0</span></div>
+  <div class="ctrl"><label>w₃ deadline</label><input type="range" min="0" max="20" value="15" step="1" id="w3" oninput="cv('lw3',(this.value/10).toFixed(1))"><span class="cv" id="lw3">1.5</span></div>
+  <div class="ctrl"><label>w₄ utilization</label><input type="range" min="0" max="20" value="10" step="1" id="w4" oninput="cv('lw4',(this.value/10).toFixed(1))"><span class="cv" id="lw4">1.0</span></div>
+  <div class="ctrl"><label>w₅ locality</label><input type="range" min="0" max="20" value="12" step="1" id="w5" oninput="cv('lw5',(this.value/10).toFixed(1))"><span class="cv" id="lw5">1.2</span></div>
+  <div class="ctrl"><label>w₆ priority</label><input type="range" min="0" max="20" value="13" step="1" id="w6" oninput="cv('lw6',(this.value/10).toFixed(1))"><span class="cv" id="lw6">1.3</span></div>
+
+  <button class="btn go" onclick="runSim()">Run scheduler</button>
+  <button class="btn" onclick="runCompare()">Compare all</button>
+</div>
+
+<div class="main">
+  <div class="mets">
+    <div class="met"><div class="mv" id="mm">—</div><div class="ml">Makespan (s)</div><div class="md" id="dm"></div></div>
+    <div class="met"><div class="mv" id="ml2">—</div><div class="ml">Avg latency (s)</div><div class="md" id="dl"></div></div>
+    <div class="met"><div class="mv" id="mu">—</div><div class="ml">Resource usage</div><div class="md" id="du"></div></div>
+    <div class="met"><div class="mv" id="mlo">—</div><div class="ml">Data locality</div><div class="md" id="dlo"></div></div>
+    <div class="met"><div class="mv" id="mdp">—</div><div class="ml">Deadline penalty</div><div class="md" id="ddp"></div></div>
+    <div class="met"><div class="mv" id="mpr">—</div><div class="ml">Priority score</div><div class="md" id="dpr"></div></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="card" style="padding:10px">
+      <div class="sec" style="margin-top:0">Job queue</div>
+      <table><thead><tr><th>ID</th><th>Name</th><th>Pri</th><th>CPU</th><th>DL</th><th>Status</th><th>Prog</th></tr></thead>
+      <tbody id="jt"></tbody></table>
+    </div>
+    <div>
+      <div class="sec">Cluster nodes</div>
+      <div id="nl"></div>
+      <div class="sec">QPSO convergence</div>
+      <div class="card" style="padding:8px"><div style="position:relative;height:120px"><canvas id="fc"></canvas></div></div>
+    </div>
+  </div>
+
+  <div id="cmp" style="display:none" class="card">
+    <div class="sec" style="margin-top:0">Scheduler comparison</div>
+    <div class="cgrid" id="cg"></div>
+  </div>
+
+  <div class="card" style="padding:9px;margin-top:10px">
+    <div class="sec" style="margin-top:0">Log</div>
+    <div id="logbox"></div>
+  </div>
+</div>
+</div>
+
+<script>
+// ── All QPSO logic runs entirely in the browser (no server) ──────────────────
+
+let jobs=[],nodes=[],mode='QIPS',fc=null,fifoM=null,animT=null;
+const JNAMES=["WordCount","PageRank","TeraSort","HiveQuery","SparkML","HBase Scan","Pig Latin","MapReduce ETL","Flume","Sqoop"];
+const PTIERS=[[1.0,"Critical","pc"],[0.75,"High","ph"],[0.4,"Medium","pm"],[0.15,"Low","pl"]];
+
+function cv(id,v){document.getElementById(id).textContent=v}
+function $(id){return document.getElementById(id)}
+function ri(a,b){return a+Math.floor(Math.random()*(b-a+1))}
+function rf(a,b){return a+Math.random()*(b-a)}
+function shuffle(a){let b=[...a];for(let i=b.length-1;i>0;i--){let j=ri(0,i);[b[i],b[j]]=[b[j],b[i]]}return b}
+function getW(){return ['w1','w2','w3','w4','w5','w6'].map(id=>parseFloat($(id).value)/10)}
+
+function log(msg,t='i'){
+  let d=$('logbox'),ts=new Date().toTimeString().slice(0,8);
+  let cls={i:'li',o:'lo',w:'lw'}[t]||'li';
+  let el=document.createElement('div');el.className='le';
+  el.innerHTML=`<span class="ts">[${ts}]</span> <span class="${cls}">${msg}</span>`;
+  d.prepend(el);while(d.children.length>40)d.removeChild(d.lastChild);
+}
+
+function setMode(m){
+  mode=m;
+  ['QIPS','FIFO','Fair','Capacity'].forEach(x=>$('t-'+x).classList.toggle('on',x===m));
+  $('qp-ctrls').style.opacity=m==='QIPS'?'1':'0.35';
+}
+
+// ── Fitness functions (mirror of Python qpso_engine/fitness.py) ───────────────
+
+function makespan(order){return order.reduce((a,i)=>a+jobs[i].estimated_runtime,0)}
+
+function latency(order){
+  let cum=0,sum=0;
+  order.forEach(i=>{sum+=cum;cum+=jobs[i].estimated_runtime});
+  return sum/order.length;
+}
+
+function deadlinePenalty(order){
+  let cum=0,pen=0;
+  order.forEach(i=>{cum+=jobs[i].estimated_runtime;pen+=Math.max(0,cum-jobs[i].deadline_slack)});
+  return pen;
+}
+
+function resourceUsage(order){
+  let total=nodes.reduce((a,n)=>a+n.total_cpu,0)||1;
+  return Math.min(1,order.reduce((a,i)=>a+jobs[i].cpu_demand,0)/(total*order.length));
+}
+
+function dataLocality(order){
+  if(!order.length)return 0;
+  let local=order.filter((i,rank)=>nodes[rank%nodes.length].data_blocks.includes(jobs[i].id)).length;
+  return local/order.length;
+}
+
+function prioritySat(order){
+  if(!order.length)return 0;
+  return order.reduce((a,i,rank)=>a+jobs[i].priority*(1/(rank+1)),0)/order.length;
+}
+
+function fitness(order,ws){
+  let[w1,w2,w3,w4,w5,w6]=ws;
+  return w1*makespan(order)/100+w2*latency(order)/50+w3*deadlinePenalty(order)/100
+        -w4*resourceUsage(order)*10-w5*dataLocality(order)*10-w6*prioritySat(order)*10;
+}
+
+function allMetrics(order){
+  return{
+    makespan:Math.round(makespan(order)),
+    avg_latency:Math.round(latency(order)),
+    deadline_penalty:Math.round(deadlinePenalty(order)),
+    resource_usage_pct:Math.round(resourceUsage(order)*100),
+    data_locality_pct:Math.round(dataLocality(order)*100),
+    priority_satisfaction:prioritySat(order).toFixed(3),
+    job_results:order.map((i,rank)=>{
+      let node=nodes[rank%nodes.length];
+      let cum=order.slice(0,rank+1).reduce((a,j)=>a+jobs[j].estimated_runtime,0);
+      return{job_id:jobs[i].id,is_local:node.data_blocks.includes(jobs[i].id),
+             meets_deadline:cum<=jobs[i].deadline_slack,assigned_node:node.id};
+    })
+  };
+}
+
+// ── QPSO optimizer (full JS implementation of Equation 2) ────────────────────
+
+function decode(pos){return [...pos].map((_,i)=>i).sort((a,b)=>pos[a]-pos[b])}
+
+function qpsoOptimize(ws){
+  let n=jobs.length, nP=parseInt($('sl-p').value), maxIter=parseInt($('sl-it').value);
+  let beta=parseFloat($('sl-b').value)/100;
+  let swarm=Array.from({length:nP},()=>shuffle([...Array(n).keys()]).map(Number));
+  let pbest=swarm.map(p=>[...p]);
+  let pbestFit=pbest.map(p=>fitness(decode(p),ws));
+  let gi=pbestFit.indexOf(Math.min(...pbestFit));
+  let gbest=[...pbest[gi]],gbestFit=pbestFit[gi];
+  let history=[gbestFit];
+
+  for(let t=0;t<maxIter;t++){
+    let bT=beta*(1-0.5*t/maxIter);
+    let mbest=Array(n).fill(0).map((_,j)=>pbest.reduce((a,p)=>a+p[j],0)/nP);
+    for(let i=0;i<nP;i++){
+      let phi=Array(n).fill(0).map(()=>Math.random());
+      let u=Array(n).fill(0).map(()=>Math.max(1e-10,Math.random()));
+      let pij=phi.map((ph,j)=>ph*pbest[i][j]+(1-ph)*gbest[j]);
+      let dir=Array(n).fill(0).map(()=>Math.random()>0.5?1:-1);
+      let newPos=pij.map((p,j)=>p+dir[j]*bT*Math.abs(mbest[j]-swarm[i][j])*Math.log(1/u[j]));
+      swarm[i]=newPos;
+      let dec=decode(newPos),f=fitness(dec,ws);
+      if(f<pbestFit[i]){pbest[i]=[...newPos];pbestFit[i]=f;}
+      if(f<gbestFit){gbest=[...newPos];gbestFit=f;}
+    }
+    history.push(gbestFit);
+  }
+  return{order:decode(gbest),fitness:gbestFit,history};
+}
+
+// ── Baseline schedulers ───────────────────────────────────────────────────────
+
+function fifoOrder(){return jobs.map((_,i)=>i)}
+function fairOrder(){return jobs.map((_,i)=>i).sort((a,b)=>jobs[a].estimated_runtime-jobs[b].estimated_runtime)}
+function capOrder(){return jobs.map((_,i)=>i).sort((a,b)=>b===a?0:jobs[b].priority-jobs[a].priority||jobs[a].estimated_runtime-jobs[b].estimated_runtime)}
+
+function getOrder(m,ws){
+  if(m==='QIPS'){let r=qpsoOptimize(ws);return{order:r.order,history:r.history}}
+  if(m==='FIFO')return{order:fifoOrder(),history:[]}
+  if(m==='Fair')return{order:fairOrder(),history:[]}
+  if(m==='Capacity')return{order:capOrder(),history:[]}
+  return{order:fifoOrder(),history:[]}
+}
+
+// ── UI rendering ──────────────────────────────────────────────────────────────
+
+function renderJobs(order,states){
+  let pmap={1.0:'pc',0.75:'ph',0.4:'pm',0.15:'pl'};
+  let plbl={1.0:'Critical',0.75:'High',0.4:'Medium',0.15:'Low'};
+  let smap={Queued:'sc',Running:'sr',Done:'sd',Late:'sl'};
+  let fcol={Done:'#639922',Running:'#378ADD',Late:'#E24B4A',Queued:'#B4B2A9'};
+  $('jt').innerHTML=order.map(i=>{
+    let j=states[i],st=j.status||'Queued',pr=Math.round(j.progress||0);
+    return`<tr><td style="font-family:monospace;color:#aaa">${j.id}</td><td>${j.name}</td>
+    <td><span class="badge ${pmap[j.priority]||'pm'}">${plbl[j.priority]||'Med'}</span></td>
+    <td>${j.cpu_demand}c</td>
+    <td style="color:${j.deadline_slack<100?'#A32D2D':'#555'}">${j.deadline_slack}s</td>
+    <td class="${smap[st]||''}">${st}</td>
+    <td><div class="pt"><div class="pf" style="width:${pr}%;background:${fcol[st]||'#ccc'}"></div></div></td></tr>`;
+  }).join('');
+}
+
+function renderNodes(){
+  $('nl').innerHTML=nodes.map(n=>{
+    let uc=n.total_cpu-n.available_cpu,um=n.total_mem-n.available_mem;
+    let cp=Math.round(uc/n.total_cpu*100),mp=Math.round(um/n.total_mem*100);
+    return`<div class="nc">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+        <span style="font-weight:600;font-size:11px">${n.id}</span>
+        <span style="font-size:10px;color:#888">${n.data_blocks.length} block(s)</span></div>
+      <div style="font-size:10px;color:#888">CPU ${uc}/${n.total_cpu} (${cp}%)</div>
+      <div class="bt"><div class="bf" style="width:${cp}%;background:#378ADD"></div></div>
+      <div style="font-size:10px;color:#888;margin-top:3px">Mem ${Math.round(um/1024)}/${n.total_mem/1024}GB (${mp}%)</div>
+      <div class="bt"><div class="bf" style="width:${mp}%;background:#1D9E75"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderChart(history){
+  if(fc){fc.destroy();fc=null}
+  let ctx=$('fc').getContext('2d');
+  if(!history||!history.length){
+    ctx.clearRect(0,0,400,120);ctx.fillStyle='#aaa';ctx.font='11px sans-serif';
+    ctx.textAlign='center';ctx.fillText('Run QIPS mode to see convergence',200,60);return;
+  }
+  fc=new Chart(ctx,{type:'line',data:{labels:history.map((_,i)=>i),datasets:[{
+    label:'Fitness',data:history,borderColor:'#534AB7',borderWidth:1.5,
+    pointRadius:0,tension:0.3,fill:true,backgroundColor:'rgba(83,74,183,0.08)'}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{maxTicksLimit:5,font:{size:9}},grid:{display:false}},
+              y:{ticks:{font:{size:9},maxTicksLimit:4},grid:{color:'rgba(0,0,0,0.05)'}}}}});
+}
+
+function clearMets(){
+  ['mm','ml2','mu','mlo','mdp','mpr'].forEach(id=>$(id).textContent='—');
+  ['dm','dl','du','dlo','ddp','dpr'].forEach(id=>$(id).textContent='');
+}
+
+function showMets(m,fifo){
+  $('mm').textContent=m.makespan;
+  $('ml2').textContent=m.avg_latency;
+  $('mu').textContent=m.resource_usage_pct+'%';
+  $('mlo').textContent=m.data_locality_pct+'%';
+  $('mdp').textContent=m.deadline_penalty;
+  $('mpr').textContent=m.priority_satisfaction;
+  if(!fifo||mode==='FIFO')return;
+  function d(el,a,b,lower){let p=Math.round((a-b)/Math.abs(b||1)*100);let good=lower?p<0:p>0;
+    $(el).innerHTML=`<span style="color:${good?'#3B6D11':'#A32D2D'}">${p>0?'+':''}${p}% vs FIFO</span>`;}
+  d('dm',m.makespan,fifo.makespan,true);
+  d('dl',m.avg_latency,fifo.avg_latency,true);
+  d('du',m.resource_usage_pct,fifo.resource_usage_pct,false);
+  d('dlo',m.data_locality_pct,fifo.data_locality_pct,false);
+  d('ddp',m.deadline_penalty,fifo.deadline_penalty,true);
+  d('dpr',parseFloat(m.priority_satisfaction),parseFloat(fifo.priority_satisfaction),false);
+}
+
+// ── Simulation ────────────────────────────────────────────────────────────────
+
+function resetSim(){
+  if(animT)clearTimeout(animT);
+  let n=parseInt($('sl-j').value);
+  jobs=[];nodes=[];fifoM=null;
+  let nodeIds=['Node-1','Node-2','Node-3'];
+  nodes=nodeIds.map(id=>({id,total_cpu:8,total_mem:8192,available_cpu:8,available_mem:8192,data_blocks:[]}));
+  for(let i=0;i<n;i++){
+    let pt=PTIERS[ri(0,3)],ln=ri(0,2),rt=ri(20,180);
+    let j={id:`J-${String(i+1).padStart(2,'0')}`,name:JNAMES[i%JNAMES.length],
+      priority:pt[0],estimated_runtime:rt,cpu_demand:ri(1,6),
+      mem_demand:[512,1024,2048,4096][ri(0,3)],
+      deadline_slack:ri(Math.ceil(rt*1.1),rt*4),input_size_gb:Math.round(rf(0.5,8)*10)/10,
+      local_node_id:nodes[ln].id,status:'Queued',progress:0};
+    jobs.push(j);nodes[ln].data_blocks.push(j.id);
+  }
+  renderJobs(jobs.map((_,i)=>i),jobs);
+  renderNodes();clearMets();renderChart(null);
+  $('cmp').style.display='none';
+  log(`Workload reset: ${n} jobs, 3 nodes`,'i');
+}
+
+function runSim(){
+  if(animT)clearTimeout(animT);
+  jobs.forEach(j=>{j.status='Queued';j.progress=0;});
+  nodes.forEach(n=>{n.available_cpu=n.total_cpu;n.available_mem=n.total_mem;});
+  renderNodes();clearMets();
+  log(`Running ${mode} scheduler on ${jobs.length} jobs...`,'i');
+  let ws=getW();
+  let{order,history}=getOrder(mode,ws);
+  log(`Order: ${order.map(i=>jobs[i].id).join(' → ')}`,'o');
+  if(history.length)log(`QPSO: fitness ${history[history.length-1].toFixed(3)} after ${history.length-1} iters`,'o');
+  renderChart(history);
+  let m=allMetrics(order);
+  if(!fifoM||mode==='FIFO')fifoM=allMetrics(fifoOrder());
+  m.job_results=m.job_results;
+  let mCopy={...m};delete mCopy.job_results;
+  let fifoMCopy=fifoM?{...fifoM}:null;if(fifoMCopy)delete fifoMCopy.job_results;
+  showMets(mCopy,fifoMCopy);
+  // Animate execution
+  let states=jobs.map(j=>({...j,status:'Queued',progress:0}));
+  let queue=[...order],running=new Set(),starts={},t=0;
+  function tick(){
+    while(running.size<3&&queue.length){let i=queue.shift();running.add(i);states[i].status='Running';starts[i]=t;}
+    running.forEach(i=>states[i].progress=Math.min(98,(t-starts[i])/jobs[i].estimated_runtime*100));
+    let done=[];running.forEach(i=>{if(t-starts[i]>=jobs[i].estimated_runtime)done.push(i);});
+    done.forEach(i=>{running.delete(i);states[i].progress=100;
+      let jr=m.job_results.find(r=>r.job_id===jobs[i].id);
+      states[i].status=jr&&!jr.meets_deadline?'Late':'Done';
+      log(`${jobs[i].id} finished at t=${t}s — ${states[i].status}`,states[i].status==='Done'?'o':'w');
+    });
+    renderJobs(order,states);t+=3;
+    if(running.size||queue.length)animT=setTimeout(tick,100);
+  }
+  tick();
+}
+
+function runCompare(){
+  log('Comparing all schedulers...','i');
+  let ws=getW();
+  let scheds={QIPS:()=>qpsoOptimize(ws).order,FIFO:fifoOrder,Fair:fairOrder,Capacity:capOrder};
+  let results={};
+  for(let[name,fn]of Object.entries(scheds)){let order=fn();results[name]={order,metrics:allMetrics(order)};}
+  let makespans=Object.values(results).map(r=>r.metrics.makespan);
+  let best=Object.keys(results)[makespans.indexOf(Math.min(...makespans))];
+  $('cg').innerHTML=Object.entries(results).map(([name,r])=>{
+    let m=r.metrics;
+    return`<div class="cc${name===best?' best':''}">
+      <h4>${name}${name===best?' ★':''}</h4>
+      <div class="cr"><span>Makespan</span><span>${m.makespan}s</span></div>
+      <div class="cr"><span>Latency</span><span>${m.avg_latency}s</span></div>
+      <div class="cr"><span>Deadline</span><span>${m.deadline_penalty}</span></div>
+      <div class="cr"><span>Usage</span><span>${m.resource_usage_pct}%</span></div>
+      <div class="cr"><span>Locality</span><span>${m.data_locality_pct}%</span></div>
+      <div class="cr"><span>Priority</span><span>${m.priority_satisfaction}</span></div>
+    </div>`;
+  }).join('');
+  $('cmp').style.display='block';
+  log(`Best scheduler: ${best} (makespan: ${results[best].metrics.makespan}s)`,'o');
+}
+
+resetSim();
+</script>
+</body>
+</html>

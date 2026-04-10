@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QIPS — Quantum-Inspired Priority Scheduler</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    :root {
+      --bg:        #0d0f14;
+      --surface:   #141720;
+      --surface2:  #1c2030;
+      --border:    #252a3a;
+      --border2:   #2e3550;
+      --text:      #e2e6f0;
+      --muted:     #6b738f;
+      --accent:    #5b6af0;
+      --accent2:   #7c8fff;
+      --green:     #34d399;
+      --red:       #f87171;
+      --yellow:    #fbbf24;
+      --qips-glow: rgba(91,106,240,0.2);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);font-size:13px;overflow-x:hidden}
+
+    /* ── Top bar ── */
+    .topbar{
+      background:var(--surface);border-bottom:1px solid var(--border);
+      padding:0 24px;height:52px;display:flex;align-items:center;
+      justify-content:space-between;position:sticky;top:0;z-index:100
+    }
+    .brand{display:flex;align-items:center;gap:10px}
+    .brand-icon{
+      width:30px;height:30px;border-radius:8px;
+      background:linear-gradient(135deg,#5b6af0,#9b6af0);
+      display:flex;align-items:center;justify-content:center;
+      font-size:14px;font-weight:700;color:#fff
+    }
+    .brand h1{font-size:14px;font-weight:600}
+    .brand p{font-size:11px;color:var(--muted);margin-top:1px}
+    .mode-tabs{display:flex;gap:4px;background:var(--bg);border-radius:10px;padding:3px;border:1px solid var(--border)}
+    .tab{
+      padding:5px 14px;border-radius:7px;border:none;background:transparent;
+      cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;
+      color:var(--muted);transition:all .15s;font-weight:500
+    }
+    .tab.active{background:var(--accent);color:#fff;box-shadow:0 0 12px var(--qips-glow)}
+    .tab[data-algo="QIPS"].active{background:linear-gradient(135deg,#5b6af0,#9b6af0)}
+
+    /* ── Layout ── */
+    .main{display:grid;grid-template-columns:296px 1fr;height:calc(100vh - 52px)}
+    .sidebar{
+      background:var(--surface);border-right:1px solid var(--border);
+      padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:16px
+    }
+    .content{padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+
+    /* ── Section label ── */
+    .sec-label{
+      font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;
+      color:var(--muted);margin-bottom:8px;font-family:'DM Mono',monospace
+    }
+
+    /* ── Slider controls — FIXED: value always visible ── */
+    .ctrl{display:flex;align-items:center;gap:0;margin-bottom:6px}
+    .ctrl label{
+      font-size:11px;color:var(--muted);width:106px;flex-shrink:0;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+    }
+    .ctrl input[type=range]{
+      flex:1;min-width:0;-webkit-appearance:none;height:3px;
+      background:var(--border2);border-radius:2px;outline:none;margin:0 6px
+    }
+    .ctrl input[type=range]::-webkit-slider-thumb{
+      -webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+      background:var(--accent);cursor:pointer;border:2px solid var(--bg)
+    }
+    /* value box: fixed width, always visible, right-aligned */
+    .ctrl .val{
+      font-size:11px;font-weight:600;font-family:'DM Mono',monospace;
+      width:38px;min-width:38px;text-align:right;color:var(--accent2);flex-shrink:0
+    }
+
+    /* ── Buttons ── */
+    .btn{
+      width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);
+      background:var(--surface2);cursor:pointer;font-size:12px;font-weight:500;
+      color:var(--text);transition:all .15s;font-family:'DM Sans',sans-serif;margin-top:2px
+    }
+    .btn:hover{background:var(--border2)}
+    .btn.primary{
+      background:linear-gradient(135deg,#5b6af0,#7b5af0);color:#fff;border:none;
+      box-shadow:0 4px 16px rgba(91,106,240,.3)
+    }
+    .btn.primary:hover{box-shadow:0 4px 24px rgba(91,106,240,.5)}
+    .btn.running{opacity:.5;cursor:not-allowed}
+
+    /* ── Metric cards ── */
+    .metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+    .metric{
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:10px;padding:12px
+    }
+    .metric-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+    .metric-lbl{font-size:10px;color:var(--muted);line-height:1.3}
+    .dir-badge{font-size:8px;padding:2px 6px;border-radius:6px;font-weight:700;font-family:'DM Mono',monospace}
+    .dir-down{background:rgba(248,113,113,.12);color:#f87171}
+    .dir-up{background:rgba(52,211,153,.12);color:#34d399}
+    .metric-val{font-size:22px;font-weight:600;line-height:1;font-family:'DM Mono',monospace}
+    .metric-delta{font-size:10px;margin-top:5px;font-family:'DM Mono',monospace}
+    .delta-good{color:var(--green)} .delta-bad{color:var(--red)} .delta-neutral{color:var(--muted)}
+
+    /* ── Card ── */
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px}
+
+    /* ── Tables ── */
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    th{
+      text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;
+      letter-spacing:.07em;color:var(--muted);padding:7px 8px;
+      border-bottom:1px solid var(--border);font-family:'DM Mono',monospace
+    }
+    td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:var(--surface2)}
+
+    /* ── Priority badges ── */
+    .badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;letter-spacing:.03em}
+    .p-critical{background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.25)}
+    .p-high    {background:rgba(155,106,240,.15);color:#b87fff;border:1px solid rgba(155,106,240,.25)}
+    .p-medium  {background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.2)}
+    .p-low     {background:rgba(52,211,153,.1);color:#34d399;border:1px solid rgba(52,211,153,.15)}
+
+    /* ── Status ── */
+    .status-queued {color:var(--muted)}
+    .status-running{color:var(--accent2);font-weight:600}
+    .status-done   {color:var(--green);font-weight:600}
+    .status-late   {color:var(--red);font-weight:600}
+
+    /* ── Progress ── */
+    .prog-track{height:4px;background:var(--border2);border-radius:2px;overflow:hidden;width:64px;display:inline-block;vertical-align:middle}
+    .prog-fill{height:100%;border-radius:2px;transition:width .3s}
+
+    /* ── Node cards ── */
+    .node-card{background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:6px;border:1px solid var(--border)}
+    .bar-track{height:4px;background:var(--border2);border-radius:2px;overflow:hidden;margin:3px 0 8px}
+    .bar-fill{height:100%;border-radius:2px;transition:width .4s ease}
+
+    /* ── Log ── */
+    #log-box{
+      font-family:'DM Mono',monospace;font-size:10px;background:var(--bg);
+      color:var(--muted);padding:10px;border-radius:8px;height:130px;
+      overflow-y:auto;border:1px solid var(--border)
+    }
+    .log-entry{padding:2px 0}
+    .log-ts{color:var(--border2)}
+    .log-info{color:#7090d0} .log-ok{color:var(--green)} .log-warn{color:var(--yellow)}
+
+    /* ── Compare ── */
+    .compare-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .compare-card{border-radius:10px;overflow:hidden;border:1px solid var(--border)}
+    .compare-card.qips-winner{border:2px solid var(--accent);box-shadow:0 0 20px var(--qips-glow)}
+    .compare-header{padding:10px 14px}
+    .compare-header h4{font-size:13px;font-weight:700;color:#fff}
+    .compare-header .sub{font-size:10px;color:rgba(255,255,255,.55);margin-top:2px}
+    .compare-header .wins{font-size:10px;font-weight:700;color:rgba(255,255,255,.85);margin-top:4px}
+    .compare-body{padding:4px 12px 10px;background:var(--surface)}
+    .cmp-row{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:5px 0;border-bottom:1px solid var(--border);font-size:11px
+    }
+    .cmp-row:last-child{border-bottom:none}
+    .cmp-lbl{color:var(--muted);display:flex;align-items:center;gap:3px}
+    .cmp-val{display:flex;align-items:center;gap:5px;font-family:'DM Mono',monospace;font-size:11px}
+    .cmp-num{font-weight:600}
+    .cmp-delta{font-size:9px}
+    .best-dot{
+      width:6px;height:6px;border-radius:50%;background:var(--green);
+      display:inline-block;margin-left:3px;box-shadow:0 0 5px var(--green)
+    }
+
+    /* ── Win bar ── */
+    .win-bar{display:flex;gap:6px;flex-wrap:wrap}
+    .win-pill{
+      padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;
+      font-family:'DM Mono',monospace
+    }
+    .win-qips {background:rgba(91,106,240,.25);color:var(--accent2);border:1px solid rgba(91,106,240,.4)}
+    .win-other{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+    .win-leader{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.3)}
+
+    /* ── Chart ── */
+    .chart-wrap{position:relative;height:120px}
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar{width:4px;height:4px}
+    ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-icon">Q</div>
+    <div>
+      <h1>QIPS — Quantum-Inspired Priority Scheduler</h1>
+      <p>Hadoop YARN simulation · QPSO optimisation · Bhavana P &amp; Shashikumar D R</p>
+    </div>
+  </div>
+  <div class="mode-tabs">
+    <button class="tab active" data-algo="QIPS"     onclick="setMode('QIPS')">QIPS</button>
+    <button class="tab"        data-algo="FIFO"     onclick="setMode('FIFO')">FIFO</button>
+    <button class="tab"        data-algo="Fair"     onclick="setMode('Fair')">Fair/SJF</button>
+    <button class="tab"        data-algo="Capacity" onclick="setMode('Capacity')">Capacity</button>
+  </div>
+</div>
+
+<div class="main">
+  <!-- ── SIDEBAR ── -->
+  <div class="sidebar">
+
+    <div>
+      <div class="sec-label">Workload</div>
+      <div class="ctrl">
+        <label>Jobs</label>
+        <input type="range" min="3" max="10" value="6" step="1" id="sl-jobs"
+               oninput="v('v-jobs', this.value)">
+        <span class="val" id="v-jobs">6</span>
+      </div>
+      <button class="btn" onclick="loadWorkload()">⟳ New workload</button>
+    </div>
+
+    <div id="qips-controls">
+      <div class="sec-label">QPSO parameters</div>
+      <div class="ctrl">
+        <label>Particles (n)</label>
+        <input type="range" min="5" max="60" value="30" step="5" id="sl-particles"
+               oninput="v('v-particles', this.value)">
+        <span class="val" id="v-particles">30</span>
+      </div>
+      <div class="ctrl">
+        <label>Max iterations</label>
+        <input type="range" min="20" max="300" value="100" step="10" id="sl-iters"
+               oninput="v('v-iters', this.value)">
+        <span class="val" id="v-iters">100</span>
+      </div>
+      <div class="ctrl">
+        <label>Beta (β)</label>
+        <input type="range" min="20" max="120" value="75" step="5" id="sl-beta"
+               oninput="v('v-beta', (this.value/100).toFixed(2))">
+        <span class="val" id="v-beta">0.75</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-label">Fitness weights</div>
+      <div class="ctrl">
+        <label>w₁ makespan ↓</label>
+        <input type="range" min="0" max="30" value="10" step="1" id="w1"
+               oninput="v('lw1', (this.value/10).toFixed(1))">
+        <span class="val" id="lw1">1.0</span>
+      </div>
+      <div class="ctrl">
+        <label>w₂ latency ↓</label>
+        <input type="range" min="0" max="30" value="12" step="1" id="w2"
+               oninput="v('lw2', (this.value/10).toFixed(1))">
+        <span class="val" id="lw2">1.2</span>
+      </div>
+      <div class="ctrl">
+        <label>w₃ deadline ↓</label>
+        <input type="range" min="0" max="40" value="25" step="1" id="w3"
+               oninput="v('lw3', (this.value/10).toFixed(1))">
+        <span class="val" id="lw3">2.5</span>
+      </div>
+      <div class="ctrl">
+        <label>w₄ utilisation ↑</label>
+        <input type="range" min="0" max="30" value="10" step="1" id="w4"
+               oninput="v('lw4', (this.value/10).toFixed(1))">
+        <span class="val" id="lw4">1.0</span>
+      </div>
+      <div class="ctrl">
+        <label>w₅ locality ↑</label>
+        <input type="range" min="0" max="30" value="12" step="1" id="w5"
+               oninput="v('lw5', (this.value/10).toFixed(1))">
+        <span class="val" id="lw5">1.2</span>
+      </div>
+      <div class="ctrl">
+        <label>w₆ priority ↑</label>
+        <input type="range" min="0" max="30" value="20" step="1" id="w6"
+               oninput="v('lw6', (this.value/10).toFixed(1))">
+        <span class="val" id="lw6">2.0</span>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <button class="btn primary" id="run-btn" onclick="runScheduler()">▶ Run scheduler</button>
+      <button class="btn" onclick="runCompare()">⇄ Compare all schedulers</button>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <!-- ── CONTENT ── -->
+  <div class="content">
+
+    <!-- Metric cards -->
+    <div class="metric-grid">
+      <div class="metric">
+        <div class="metric-top"><span class="metric-lbl">Makespan</span><span class="dir-badge dir-down">↓ lower</span></div>
+        <div class="metric-val" id="m-makespan">—</div>
+        <div class="metric-delta" id="d-makespan"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-top"><span class="metric-lbl">Avg Latency</span><span class="dir-badge dir-down">↓ lower</span></div>
+        <div class="metric-val" id="m-latency">—</div>
+        <div class="metric-delta" id="d-latency"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-top"><span class="metric-lbl">Deadline Penalty</span><span class="dir-badge dir-down">↓ lower</span></div>
+        <div class="metric-val" id="m-deadline">—</div>
+        <div class="metric-delta" id="d-deadline"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-top"><span class="metric-lbl">Deadlines Met</span><span class="dir-badge dir-up">↑ higher</span></div>
+        <div class="metric-val" id="m-dlmet">—</div>
+        <div class="metric-delta" id="d-dlmet"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-top"><span class="metric-lbl">Resource Usage</span><span class="dir-badge dir-up">↑ higher</span></div>
+        <div class="metric-val" id="m-util">—</div>
+        <div class="metric-delta" id="d-util"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-top"><span class="metric-lbl">Data Locality</span><span class="dir-badge dir-up">↑ higher</span></div>
+        <div class="metric-val" id="m-locality">—</div>
+        <div class="metric-delta" id="d-locality"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-top"><span class="metric-lbl">Priority Score</span><span class="dir-badge dir-up">↑ higher</span></div>
+        <div class="metric-val" id="m-priority">—</div>
+        <div class="metric-delta" id="d-priority"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-top"><span class="metric-lbl">Throughput</span><span class="dir-badge dir-up">↑ higher</span></div>
+        <div class="metric-val" id="m-throughput">—</div>
+        <div class="metric-delta" id="d-throughput"></div>
+      </div>
+    </div>
+
+    <!-- Job table + Nodes/Chart -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="card">
+        <div class="sec-label" style="margin-bottom:8px">
+          Job queue — execution order
+          <span style="color:var(--muted);font-size:9px;margin-left:6px;text-transform:none;letter-spacing:0">
+            (Critical → High → Medium → Low priority)
+          </span>
+        </div>
+        <table>
+          <thead>
+          <tr><th>Job</th><th>Name</th><th>Priority</th><th>CPU</th><th>Deadline</th><th>Status</th><th>Progress</th></tr>
+          </thead>
+          <tbody id="job-tbody"></tbody>
+        </table>
+      </div>
+      <div>
+        <div class="sec-label" style="margin-bottom:8px">Cluster nodes</div>
+        <div id="node-list"></div>
+        <div class="sec-label" style="margin-bottom:6px;margin-top:10px">QPSO convergence</div>
+        <div class="card" style="padding:10px"><div class="chart-wrap"><canvas id="fitChart"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- Compare section -->
+    <div class="card" id="compare-section" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div class="sec-label" style="margin:0">Scheduler comparison</div>
+        <div class="win-bar" id="win-bar"></div>
+      </div>
+      <div class="compare-grid" id="compare-grid"></div>
+      <p style="font-size:10px;color:var(--muted);margin-top:10px;font-style:italic">
+        ● green dot = best value for that metric · all deltas vs FIFO baseline
+      </p>
+    </div>
+
+    <!-- Log -->
+    <div class="card" style="padding:10px">
+      <div class="sec-label" style="margin-bottom:6px">Scheduler log</div>
+      <div id="log-box"></div>
+    </div>
+
+  </div><!-- /content -->
+</div>
+
+<script>
+  // ── State ────────────────────────────────────────────────────────────────────
+  let currentJobs=[], currentNodes=[], currentMode='QIPS';
+  let simTimer=null, fitChart=null, fifoMetrics=null;
+
+  // Priority order for display: Critical(1.0) > High(0.75) > Medium(0.4) > Low(0.15)
+  const PRIORITY_ORDER = [1.0, 0.75, 0.4, 0.15];
+  const PRIORITY_MAP   = {1.0:'Critical', 0.75:'High', 0.4:'Medium', 0.15:'Low'};
+  const PRIORITY_CLASS = {1.0:'p-critical', 0.75:'p-high', 0.4:'p-medium', 0.15:'p-low'};
+
+  function v(id, val){ document.getElementById(id).textContent = val; }
+  function $(id){ return document.getElementById(id); }
+
+  // ── Mode switch ──────────────────────────────────────────────────────────────
+  function setMode(m){
+    currentMode = m;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.algo===m));
+    $('qips-controls').style.opacity       = m==='QIPS' ? '1' : '0.4';
+    $('qips-controls').style.pointerEvents = m==='QIPS' ? 'auto' : 'none';
+    log(`Switched to ${m}`, 'info');
+  }
+
+  function weights(){
+    return ['w1','w2','w3','w4','w5','w6'].map(id => parseFloat($(id).value)/10);
+  }
+
+  // ── Log ─────────────────────────────────────────────────────────────────────
+  function log(msg, type='info'){
+    const box=document.getElementById('log-box');
+    const ts=new Date().toTimeString().slice(0,8);
+    const cls={info:'log-info',ok:'log-ok',warn:'log-warn'}[type]||'log-info';
+    const el=document.createElement('div');
+    el.className='log-entry';
+    el.innerHTML=`<span class="log-ts">[${ts}]</span> <span class="${cls}">${msg}</span>`;
+    box.prepend(el);
+    while(box.children.length>60) box.removeChild(box.lastChild);
+  }
+
+  // ── Workload ─────────────────────────────────────────────────────────────────
+  async function loadWorkload(){
+    const n=parseInt($('sl-jobs').value);
+    log(`Generating workload: ${n} jobs…`,'info');
+    const r=await fetch('/api/workload',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({n_jobs:n})});
+    const data=await r.json();
+    currentJobs=data.jobs; currentNodes=data.nodes; fifoMetrics=null;
+
+    // Sort display order: Critical → High → Medium → Low
+    const displayOrder = [...Array(currentJobs.length).keys()]
+      .sort((a,b) => PRIORITY_ORDER.indexOf(currentJobs[a].priority)
+                   - PRIORITY_ORDER.indexOf(currentJobs[b].priority));
+
+    renderJobs(displayOrder, currentJobs.map(j=>({...j,status:'Queued',progress:0})));
+    renderNodes(currentNodes);
+    clearMetrics(); hideCompare(); renderChart(null);
+    log(`Workload ready: ${n} jobs across ${currentNodes.length} nodes`,'ok');
+  }
+
+  // ── Job table — sorted by priority ──────────────────────────────────────────
+  function renderJobs(order, jobStates){
+    const fillC={Done:'#34d399',Running:'#7c8fff',Late:'#f87171',Queued:'#333'};
+    const sClass={Queued:'status-queued',Running:'status-running',Done:'status-done',Late:'status-late'};
+
+    $('job-tbody').innerHTML = order.map(idx => {
+      const j=jobStates[idx];
+      const pVal=j.priority;
+      const pLbl=PRIORITY_MAP[pVal]||'Medium';
+      const pCls=PRIORITY_CLASS[pVal]||'p-medium';
+      const st=j.status||'Queued';
+      const prog=Math.round(j.progress||0);
+      const deadlineColor = j.deadline_slack < 60 ? 'var(--red)' : j.deadline_slack < 120 ? 'var(--yellow)' : 'var(--muted)';
+      return `<tr>
+        <td style="font-family:'DM Mono',monospace;color:var(--muted);font-size:10px">${j.id}</td>
+        <td>${j.name}</td>
+        <td><span class="badge ${pCls}">${pLbl}</span></td>
+        <td style="color:var(--muted)">${j.cpu_demand}c</td>
+        <td style="font-family:'DM Mono',monospace;color:${deadlineColor}">${j.deadline_slack}s</td>
+        <td class="${sClass[st]||''}">${st}</td>
+        <td><div class="prog-track"><div class="prog-fill" style="width:${prog}%;background:${fillC[st]||'#444'}"></div></div></td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Nodes ────────────────────────────────────────────────────────────────────
+  function renderNodes(nodes){
+    $('node-list').innerHTML=nodes.map(n=>{
+      const usedCpu=(n.usedCpu!==undefined)?n.usedCpu:(n.total_cpu-n.available_cpu);
+      const usedMem=(n.usedMem!==undefined)?n.usedMem:(n.total_mem-n.available_mem);
+      const cpuPct=Math.min(100,Math.round(usedCpu/n.total_cpu*100));
+      const memPct=Math.min(100,Math.round(usedMem/n.total_mem*100));
+      const cpuC=cpuPct>80?'#f87171':cpuPct>50?'#fbbf24':'#7c8fff';
+      const memC=memPct>80?'#f87171':memPct>50?'#fbbf24':'#34d399';
+      return `<div class="node-card">
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+          <span style="font-weight:600;font-size:12px;font-family:'DM Mono',monospace">${n.id}</span>
+          <span style="font-size:10px;color:var(--muted)">${n.data_blocks.length} block(s)</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:2px">
+          <span>CPU</span><span style="color:${cpuC};font-weight:600">${usedCpu}/${n.total_cpu} · ${cpuPct}%</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${cpuPct}%;background:${cpuC}"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:2px">
+          <span>Memory</span><span style="color:${memC};font-weight:600">${Math.round(usedMem/1024)}/${n.total_mem/1024}GB · ${memPct}%</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${memPct}%;background:${memC}"></div></div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Chart ────────────────────────────────────────────────────────────────────
+  function renderChart(history){
+    if(fitChart){fitChart.destroy();fitChart=null;}
+    const ctx=$('fitChart').getContext('2d');
+    if(!history||!history.length){
+      ctx.clearRect(0,0,400,120);
+      ctx.fillStyle='#6b738f';ctx.font='11px DM Sans';ctx.textAlign='center';
+      ctx.fillText('Run QIPS to see convergence',200,60);
+      return;
+    }
+    fitChart=new Chart(ctx,{
+      type:'line',
+      data:{labels:history.map((_,i)=>i),datasets:[{
+        label:'Fitness',data:history,borderColor:'#5b6af0',borderWidth:1.5,
+        pointRadius:0,tension:0.3,fill:true,backgroundColor:'rgba(91,106,240,0.08)'
+      }]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{ticks:{maxTicksLimit:6,font:{size:9},color:'#6b738f'},grid:{color:'rgba(255,255,255,0.03)'}},
+          y:{ticks:{font:{size:9},maxTicksLimit:4,color:'#6b738f'},grid:{color:'rgba(255,255,255,0.03)'}}
+        }}
+    });
+  }
+
+  // ── Metrics ──────────────────────────────────────────────────────────────────
+  function clearMetrics(){
+    ['makespan','latency','deadline','dlmet','util','locality','priority','throughput'].forEach(k=>{
+      const el=$('m-'+k); if(el) el.textContent='—';
+      const d=$('d-'+k);  if(d)  d.textContent='';
+    });
+  }
+  function hideCompare(){ $('compare-section').style.display='none'; }
+
+  function setDelta(did, a, b, lowerBetter){
+    const el=$(did); if(!el||!b) return;
+    const pct=Math.round((a-b)/Math.abs(b)*100);
+    const better=lowerBetter?pct<0:pct>0;
+    const cls=better?'delta-good':pct===0?'delta-neutral':'delta-bad';
+    el.innerHTML=`<span class="${cls}">${pct>0?'+':''}${pct}% vs FIFO</span>`;
+  }
+
+  // ── Run single scheduler ─────────────────────────────────────────────────────
+  async function runScheduler(){
+    if(!currentJobs.length){ await loadWorkload(); }
+    $('run-btn').textContent='Running…';
+    $('run-btn').classList.add('running');
+    clearMetrics(); hideCompare();
+    log(`Running ${currentMode} on ${currentJobs.length} jobs…`,'info');
+
+    const body={
+      jobs:currentJobs, nodes:currentNodes, scheduler:currentMode,
+      weights:weights(),
+      n_particles:parseInt($('sl-particles').value),
+      max_iterations:parseInt($('sl-iters').value),
+      beta:parseFloat($('sl-beta').value)/100
+    };
+    const r=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const data=await r.json();
+
+    if(!fifoMetrics && currentMode!=='FIFO'){
+      const fr=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({...body,scheduler:'FIFO'})});
+      fifoMetrics=(await fr.json()).metrics;
+    }
+    if(currentMode==='FIFO') fifoMetrics=data.metrics;
+
+    const m=data.metrics, fm=fifoMetrics||data.metrics;
+    $('m-makespan').textContent  = m.makespan+'s';
+    $('m-latency').textContent   = m.avg_latency+'s';
+    $('m-deadline').textContent  = Math.round(m.deadline_penalty);
+    $('m-dlmet').textContent     = (m.deadline_met_pct||0)+'%';
+    $('m-util').textContent      = m.resource_usage_pct+'%';
+    $('m-locality').textContent  = m.data_locality_pct+'%';
+    $('m-priority').textContent  = m.priority_satisfaction;
+    $('m-throughput').textContent= m.throughput_jobs_per_100s;
+
+    if(currentMode!=='FIFO'){
+      setDelta('d-makespan', m.makespan,            fm.makespan,            true);
+      setDelta('d-latency',  m.avg_latency,          fm.avg_latency,         true);
+      setDelta('d-deadline', m.deadline_penalty,     fm.deadline_penalty,    true);
+      setDelta('d-dlmet',    m.deadline_met_pct||0,  fm.deadline_met_pct||0, false);
+      setDelta('d-util',     m.resource_usage_pct,   fm.resource_usage_pct,  false);
+      setDelta('d-locality', m.data_locality_pct,    fm.data_locality_pct,   false);
+      setDelta('d-priority', m.priority_satisfaction,fm.priority_satisfaction,false);
+      setDelta('d-throughput',m.throughput_jobs_per_100s,fm.throughput_jobs_per_100s,false);
+    }
+
+    if(data.fitness_history&&data.fitness_history.length) renderChart(data.fitness_history);
+    log(`Done. Order: ${data.ordered_ids.join(' → ')}`,'ok');
+    if(data.fitness_history.length)
+      log(`QPSO convergence: ${data.final_fitness} over ${data.fitness_history.length-1} iterations`,'ok');
+
+    // Re-sort display by priority after execution (show priority order)
+    const prioritySortedOrder = [...data.order_indices].sort((a,b)=>
+      PRIORITY_ORDER.indexOf(currentJobs[a].priority) - PRIORITY_ORDER.indexOf(currentJobs[b].priority));
+
+    animateExecution(data.order_indices, data.job_results, prioritySortedOrder);
+    $('run-btn').textContent='▶ Run scheduler';
+    $('run-btn').classList.remove('running');
+  }
+
+  // ── Animation ────────────────────────────────────────────────────────────────
+  function animateExecution(execOrder, jobResults, displayOrder){
+    if(simTimer) clearTimeout(simTimer);
+    let states    = currentJobs.map(j=>({...j,status:'Queued',progress:0}));
+    let nodeState = currentNodes.map(n=>({...n,usedCpu:0,usedMem:0}));
+
+    renderJobs(displayOrder||execOrder, states);
+    renderNodes(nodeState);
+
+    let runningSet=new Set(), queue=[...execOrder], MAX_PAR=3;
+    let starts={}, jobNodes={}, simT=0;
+    const TICK_MS=120, SIM_STEP=4;
+
+    function tick(){
+      while(runningSet.size<MAX_PAR && queue.length){
+        const idx=queue.shift(), ni=idx%nodeState.length;
+        runningSet.add(idx); jobNodes[idx]=ni; starts[idx]=simT;
+        states[idx].status='Running'; states[idx].progress=1;
+        nodeState[ni].usedCpu=Math.min(nodeState[ni].total_cpu,nodeState[ni].usedCpu+currentJobs[idx].cpu_demand);
+        nodeState[ni].usedMem=Math.min(nodeState[ni].total_mem,nodeState[ni].usedMem+currentJobs[idx].mem_demand);
+      }
+      runningSet.forEach(idx=>{
+        states[idx].progress=Math.min(98,Math.round((simT-starts[idx])/currentJobs[idx].estimated_runtime*100));
+      });
+      const done=[];
+      runningSet.forEach(idx=>{ if((simT-starts[idx])>=currentJobs[idx].estimated_runtime) done.push(idx); });
+      done.forEach(idx=>{
+        runningSet.delete(idx); states[idx].progress=100;
+        const jr=jobResults.find(r=>r.job_id===currentJobs[idx].id);
+        states[idx].status=(jr&&!jr.meets_deadline)?'Late':'Done';
+        const ni=jobNodes[idx];
+        nodeState[ni].usedCpu=Math.max(0,nodeState[ni].usedCpu-currentJobs[idx].cpu_demand);
+        nodeState[ni].usedMem=Math.max(0,nodeState[ni].usedMem-currentJobs[idx].mem_demand);
+        log(`${currentJobs[idx].id} ${states[idx].status} at t=${simT}s`,states[idx].status==='Done'?'ok':'warn');
+      });
+      renderJobs(displayOrder||execOrder, states);
+      renderNodes(nodeState);
+      simT+=SIM_STEP;
+      if(runningSet.size||queue.length) simTimer=setTimeout(tick,TICK_MS);
+      else log('All jobs complete.','ok');
+    }
+    simTimer=setTimeout(tick,200);
+  }
+
+  // ── Compare all schedulers ────────────────────────────────────────────────────
+  async function runCompare(){
+    if(!currentJobs.length){ await loadWorkload(); }
+    log('Comparing all schedulers…','info');
+    $('compare-section').style.display='none';
+
+    const payload={
+      jobs:currentJobs.map(j=>({
+        id:j.id,name:j.name,priority:j.priority,
+        estimated_runtime:j.estimated_runtime,cpu_demand:j.cpu_demand,
+        mem_demand:j.mem_demand,deadline_slack:j.deadline_slack,
+        input_size_gb:j.input_size_gb,local_node_id:j.local_node_id||null
+      })),
+      nodes:currentNodes.map(n=>({
+        id:n.id,total_cpu:n.total_cpu,total_mem:n.total_mem,
+        available_cpu:n.total_cpu,available_mem:n.total_mem,
+        data_blocks:n.data_blocks||[]
+      })),
+      weights:weights()
+    };
+
+    let data;
+    try{
+      const r=await fetch('/api/compare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!r.ok){log('Server error HTTP '+r.status,'warn');return;}
+      data=await r.json();
+    }catch(err){log('Compare failed: '+err.message,'warn');return;}
+
+    const NAMES=Object.keys(data);
+    const FIFO_REF=data['FIFO']||data[NAMES[0]];
+    const METRIC_KEYS=['makespan','avg_latency','deadline_penalty','deadline_met_pct',
+                       'resource_usage_pct','data_locality_pct','priority_satisfaction',
+                       'throughput_jobs_per_100s'];
+    const LABELS={makespan:'Makespan',avg_latency:'Avg latency',deadline_penalty:'Deadline penalty',
+      deadline_met_pct:'Deadlines met',resource_usage_pct:'Resource usage',
+      data_locality_pct:'Data locality',priority_satisfaction:'Priority score',
+      throughput_jobs_per_100s:'Throughput'};
+    const UNITS={makespan:'s',avg_latency:'s',deadline_penalty:'s',
+      deadline_met_pct:'%',resource_usage_pct:'%',data_locality_pct:'%',
+      priority_satisfaction:'',throughput_jobs_per_100s:'/100s'};
+    const LOWER_BETTER=new Set(['makespan','avg_latency','deadline_penalty']);
+
+    // Per-metric best (correct logic — not just makespan)
+    const bestVal={};
+    METRIC_KEYS.forEach(k=>{
+      const vals=NAMES.map(n=>parseFloat(data[n].metrics[k])||0);
+      bestVal[k]=LOWER_BETTER.has(k)?Math.min(...vals):Math.max(...vals);
+    });
+
+    // Win counts
+    const wins={};
+    NAMES.forEach(n=>{wins[n]=0;});
+    METRIC_KEYS.forEach(k=>{
+      NAMES.forEach(n=>{
+        if(Math.abs((parseFloat(data[n].metrics[k])||0)-bestVal[k])<0.001) wins[n]++;
+      });
+    });
+
+    const maxWins=Math.max(...Object.values(wins));
+
+    // Win bar
+    $('win-bar').innerHTML=NAMES.map(n=>{
+      const isQ=n==='QIPS', isLeader=wins[n]===maxWins;
+      const cls=isQ?'win-qips':isLeader?'win-leader':'win-other';
+      return `<span class="win-pill ${cls}">${n}: ${wins[n]}W</span>`;
+    }).join('');
+
+    // Header colors per algo
+    const HBGS={QIPS:'linear-gradient(135deg,#5b6af0,#9b6af0)',FIFO:'#1c2030',Fair:'#0d3060',Capacity:'#063040'};
+    const SUBS={QIPS:'Quantum-Inspired (QPSO)',FIFO:'First In First Out',Fair:'Shortest Job First',Capacity:'Priority Queue'};
+
+    $('compare-grid').innerHTML=NAMES.map(name=>{
+      const m=data[name].metrics;
+      const fm=FIFO_REF.metrics;
+      const isQ=name==='QIPS';
+      const isLeader=wins[name]===maxWins;
+
+      const rows=METRIC_KEYS.map(k=>{
+        const val=parseFloat(m[k])||0;
+        const fifoV=parseFloat(fm[k])||1;
+        const isBest=Math.abs(val-bestVal[k])<0.001;
+        const pct=fifoV!==0?Math.round((val-fifoV)/Math.abs(fifoV)*100):0;
+        const better=LOWER_BETTER.has(k)?pct<0:pct>0;
+        const valFmt=(k==='deadline_penalty'||k==='makespan'||k==='avg_latency')
+          ? Math.round(val)
+          : val.toFixed(k==='priority_satisfaction'?3:1);
+        const dirSym=LOWER_BETTER.has(k)
+          ? `<span style="color:#f87171;font-size:9px">↓</span>`
+          : `<span style="color:#34d399;font-size:9px">↑</span>`;
+        const deltaHtml=name!=='FIFO'
+          ? `<span class="cmp-delta" style="color:${better?'#34d399':pct===0?'#6b738f':'#f87171'}">${pct>0?'+':''}${pct}%</span>`
+          : `<span class="cmp-delta" style="color:#444">base</span>`;
+        const dot=isBest?`<span class="best-dot"></span>`:'';
+        return `<div class="cmp-row">
+          <span class="cmp-lbl">${LABELS[k]} ${dirSym}</span>
+          <span class="cmp-val">
+            <span class="cmp-num" style="color:${isBest?(LOWER_BETTER.has(k)?'#34d399':'#7c8fff'):'var(--text)'}">${valFmt}${UNITS[k]}</span>
+            ${deltaHtml}${dot}
+          </span>
+        </div>`;
+      }).join('');
+
+      const cardBorder=isQ?'2px solid var(--accent)':isLeader?'1px solid rgba(52,211,153,.3)':'1px solid var(--border)';
+      return `<div class="compare-card ${isQ?'qips-winner':''}" style="border:${cardBorder}">
+        <div class="compare-header" style="background:${HBGS[name]||'#1c2030'}">
+          <h4>${name}${isQ?' ★':isLeader?' 🏆':''}</h4>
+          <div class="sub">${SUBS[name]||name}</div>
+          <div class="wins">${wins[name]} best metric${wins[name]!==1?'s':''}</div>
+        </div>
+        <div class="compare-body">${rows}</div>
+      </div>`;
+    }).join('');
+
+    $('compare-section').style.display='block';
+    $('compare-section').scrollIntoView({behavior:'smooth',block:'nearest'});
+    log(`Compare done. QIPS: ${wins['QIPS']}W, Fair: ${wins['Fair']||0}W, Capacity: ${wins['Capacity']||0}W, FIFO: ${wins['FIFO']||0}W`,'ok');
+  }
+
+  // Auto-boot
+  loadWorkload();
+</script>
+</body>
+</html>
