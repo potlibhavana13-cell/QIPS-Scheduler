@@ -160,7 +160,13 @@ def schedule():
 
     return jsonify(sanitize({
         "scheduler": scheduler_name,
+
+        # 🔥 ADD THIS (CRITICAL)
+        "order_indices": order,
+
+        # keep existing
         "ordered_ids": [jobs[i].id for i in order],
+
         "metrics": metrics,
         "job_results": job_results,
         "fitness_history": [round(float(v), 4) for v in history],
