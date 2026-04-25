@@ -23,7 +23,7 @@ from flask import Flask, render_template, jsonify, request
 
 from qpso_engine import (
     QPSOScheduler, Job, Node, compute_all_metrics,
-    run_all_eight_schedulers,
+    run_all_schedulers,
     hybsmrp_schedule, hfsp_schedule, frugal_schedule, intratask_schedule,
     fifo_schedule, fair_schedule, capacity_schedule,
 )
