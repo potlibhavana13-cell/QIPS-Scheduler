@@ -226,10 +226,10 @@ def compare():
         data_blocks=n.get("data_blocks", []),
     ) for n in nodes_data]
 
- results = run_all_schedulers(
-     jobs, nodes, weights,
-     qpso_params={"n_particles": n_particles, "max_iter": max_iterations, "seed": 42},
- )
+    results = run_all_schedulers(
+        jobs, nodes, weights,
+        qpso_params={"n_particles": n_particles, "max_iter": max_iterations, "seed": 42},
+    )
 
     # Remove job_results from metrics (too large for compare payload)
     for name in results:
