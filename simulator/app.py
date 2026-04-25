@@ -23,7 +23,7 @@ from flask import Flask, render_template, jsonify, request
 
 from qpso_engine import (
     QPSOScheduler, Job, Node, compute_all_metrics,
-    run_all_schedulers,
+    run_all_schedulers, run_all_eight_schedulers,
     hybsmrp_schedule, hfsp_schedule, frugal_schedule, intratask_schedule,
     fifo_schedule, fair_schedule, capacity_schedule,
 )
@@ -226,7 +226,7 @@ def compare():
         data_blocks=n.get("data_blocks", []),
     ) for n in nodes_data]
 
-    results = run_all_schedulers(
+    results = run_all_eight_schedulers(
         jobs, nodes, weights,
         qpso_params={"n_particles": n_particles, "max_iter": max_iterations, "seed": 42},
     )
