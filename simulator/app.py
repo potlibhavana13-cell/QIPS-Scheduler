@@ -1,7 +1,12 @@
 """
 simulator/app.py
-Flask web app — serves the interactive QIPS simulator UI.
-Modified for deployment (e.g., Vercel / serverless environments)
+Flask web server for the QIPS scheduler simulator.
+Supports all 8 schedulers from the paper.
+Compatible with both local development and Vercel/serverless deployment.
+
+Run locally:
+  python simulator/app.py
+  Open http://localhost:5000
 """
 
 import sys
@@ -16,8 +21,12 @@ sys.path.insert(0, ROOT_DIR)
 
 from flask import Flask, render_template, jsonify, request
 
-from qpso_engine import QPSOScheduler, run_all_schedulers, Job, Node, compute_all_metrics
-from qpso_engine.qpso import fifo_schedule, fair_schedule, capacity_schedule
+from qpso_engine import (
+    QPSOScheduler, Job, Node, compute_all_metrics,
+    run_all_eight_schedulers,
+    hybsmrp_schedule, hfsp_schedule, frugal_schedule, intratask_schedule,
+    fifo_schedule, fair_schedule, capacity_schedule,
+)
 
 # ✅ Fix template path for deployment
 app = Flask(
@@ -25,11 +34,43 @@ app = Flask(
     template_folder=os.path.join(BASE_DIR, "templates")
 )
 
+# ─────────────────────────────────────────────────────────────
+# Constants
+# ─────────────────────────────────────────────────────────────
+
+JOB_NAMES = [
+    "WordCount", "PageRank", "TeraSort", "HiveQuery", "SparkMLlib",
+    "HBase Scan", "Pig Latin", "MapReduce ETL", "Flume Ingest", "Sqoop Import",
+]
+
+PRIORITY_TIERS = [
+    ("Critical", 1.0), ("High", 0.75), ("Medium", 0.4), ("Low", 0.15)
+]
+
+SCHEDULER_MAP = {
+    "FIFO":           lambda jobs, nodes, w, p: fifo_schedule(jobs),
+    "Fair":           lambda jobs, nodes, w, p: fair_schedule(jobs),
+    "Capacity":       lambda jobs, nodes, w, p: capacity_schedule(jobs),
+    "HybSMRP":        lambda jobs, nodes, w, p: hybsmrp_schedule(jobs, nodes),
+    "HFSP":           lambda jobs, nodes, w, p: hfsp_schedule(jobs, nodes),
+    "Frugal_conf":    lambda jobs, nodes, w, p: frugal_schedule(jobs, nodes),
+    "Intra-task Loc": lambda jobs, nodes, w, p: intratask_schedule(jobs, nodes),
+    "QIPS":           None,  # handled separately via QPSOScheduler
+}
+
+SCHEDULER_ORDER = [
+    "FIFO", "Fair", "Capacity",
+    "HybSMRP", "HFSP", "Frugal_conf", "Intra-task Loc",
+    "QIPS",
+]
+
 
 # ─────────────────────────────────────────────────────────────
 # Utility
 # ─────────────────────────────────────────────────────────────
+
 def sanitize(obj):
+    """Recursively convert numpy types to native Python for JSON serialisation."""
     if isinstance(obj, dict):
         return {k: sanitize(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
@@ -43,19 +84,10 @@ def sanitize(obj):
     return obj
 
 
-JOB_NAMES = [
-    "WordCount", "PageRank", "TeraSort", "HiveQuery", "SparkMLlib",
-    "HBase Scan", "Pig Latin", "MapReduce ETL", "Flume Ingest", "Sqoop Import",
-]
-
-PRIORITY_TIERS = [
-    ("Critical", 1.0), ("High", 0.75), ("Medium", 0.4), ("Low", 0.15)
-]
-
-
 # ─────────────────────────────────────────────────────────────
 # Workload Generator
 # ─────────────────────────────────────────────────────────────
+
 def generate_workload(n_jobs: int = 6, n_nodes: int = 3, seed=None):
     if seed is not None:
         random.seed(seed)
@@ -67,7 +99,7 @@ def generate_workload(n_jobs: int = 6, n_nodes: int = 3, seed=None):
             total_mem=8192,
             available_cpu=8,
             available_mem=8192,
-            data_blocks=[]
+            data_blocks=[],
         )
         for i in range(n_nodes)
     ]
@@ -104,6 +136,7 @@ def generate_workload(n_jobs: int = 6, n_nodes: int = 3, seed=None):
 # ─────────────────────────────────────────────────────────────
 # Routes
 # ─────────────────────────────────────────────────────────────
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -114,81 +147,102 @@ def new_workload():
     body = request.get_json(force=True)
 
     jobs, nodes = generate_workload(
-        int(body.get("n_jobs", 6)),
-        int(body.get("n_nodes", 3)),
-        body.get("seed")
+        n_jobs=int(body.get("n_jobs", 6)),
+        n_nodes=int(body.get("n_nodes", 3)),
+        seed=body.get("seed"),
     )
 
     return jsonify(sanitize({
-        "jobs": [j.model_dump() for j in jobs],
+        "jobs":  [j.model_dump() for j in jobs],
         "nodes": [n.model_dump() for n in nodes],
     }))
 
 
 @app.route("/api/schedule", methods=["POST"])
 def schedule():
-    body = request.get_json(force=True)
-
-    jobs = [Job(**j) for j in body.get("jobs", [])]
-    nodes = [Node(**n) for n in body.get("nodes", [])]
-
+    body           = request.get_json(force=True)
+    jobs_data      = body.get("jobs", [])
+    nodes_data     = body.get("nodes", [])
     scheduler_name = body.get("scheduler", "QIPS")
-    weights = body.get("weights", [1.0, 1.2, 2.5, 1.0, 1.2, 2.0])
+    weights        = body.get("weights", [1.0, 1.2, 2.5, 1.0, 1.2, 2.0])
+    n_particles    = int(body.get("n_particles", 30))
+    max_iterations = int(body.get("max_iterations", 100))
+    beta           = float(body.get("beta", 0.75))
+
+    jobs  = [Job(**j) for j in jobs_data]
+    nodes = [Node(
+        id=n["id"],
+        total_cpu=n["total_cpu"],
+        total_mem=n["total_mem"],
+        available_cpu=n.get("available_cpu", n["total_cpu"]),
+        available_mem=n.get("available_mem", n["total_mem"]),
+        data_blocks=n.get("data_blocks", []),
+    ) for n in nodes_data]
+
+    history = []
 
     if scheduler_name == "QIPS":
-        sched = QPSOScheduler(
-            n_particles=int(body.get("n_particles", 30)),
-            max_iter=int(body.get("max_iterations", 100)),
-            beta=float(body.get("beta", 0.75))
-        )
+        sched = QPSOScheduler(n_particles=n_particles, max_iter=max_iterations, beta=beta)
         order, fit, history = sched.optimize(jobs, nodes, weights)
 
-    elif scheduler_name == "FIFO":
-        order, fit, history = fifo_schedule(jobs), 0.0, []
-
-    elif scheduler_name == "Fair":
-        order, fit, history = fair_schedule(jobs), 0.0, []
-
-    elif scheduler_name == "Capacity":
-        order, fit, history = capacity_schedule(jobs), 0.0, []
+    elif scheduler_name in SCHEDULER_MAP and SCHEDULER_MAP[scheduler_name] is not None:
+        fn    = SCHEDULER_MAP[scheduler_name]
+        order = fn(jobs, nodes, weights, {})
+        fit   = 0.0
 
     else:
         return jsonify({"error": f"Unknown scheduler: {scheduler_name}"}), 400
 
-    metrics = compute_all_metrics(order, jobs, nodes)
+    metrics     = compute_all_metrics(order, jobs, nodes)
     job_results = metrics.pop("job_results")
 
     return jsonify(sanitize({
-        "scheduler": scheduler_name,
-
-        # 🔥 ADD THIS (CRITICAL)
-        "order_indices": order,
-
-        # keep existing
-        "ordered_ids": [jobs[i].id for i in order],
-
-        "metrics": metrics,
-        "job_results": job_results,
+        "scheduler":       scheduler_name,
+        "order_indices":   [int(i) for i in order],
+        "ordered_ids":     [jobs[i].id for i in order],
+        "metrics":         metrics,
+        "job_results":     job_results,
         "fitness_history": [round(float(v), 4) for v in history],
-        "final_fitness": round(float(fit), 4),
+        "final_fitness":   round(float(fit), 4),
     }))
 
 
 @app.route("/api/compare", methods=["POST"])
 def compare():
-    body = request.get_json(force=True)
+    body       = request.get_json(force=True)
+    jobs_data  = body.get("jobs", [])
+    nodes_data = body.get("nodes", [])
+    weights    = body.get("weights", [1.0, 1.2, 2.5, 1.0, 1.2, 2.0])
+    n_particles    = int(body.get("n_particles", 30))
+    max_iterations = int(body.get("max_iterations", 100))
 
-    jobs = [Job(**j) for j in body.get("jobs", [])]
-    nodes = [Node(**n) for n in body.get("nodes", [])]
+    jobs  = [Job(**j) for j in jobs_data]
+    nodes = [Node(
+        id=n["id"],
+        total_cpu=n["total_cpu"],
+        total_mem=n["total_mem"],
+        available_cpu=n.get("available_cpu", n["total_cpu"]),
+        available_mem=n.get("available_mem", n["total_mem"]),
+        data_blocks=n.get("data_blocks", []),
+    ) for n in nodes_data]
 
-    results = run_all_schedulers(
-        jobs,
-        nodes,
-        body.get("weights", [1.0, 1.2, 2.5, 1.0, 1.2, 2.0])
+    results = run_all_eight_schedulers(
+        jobs, nodes, weights,
+        qpso_params={"n_particles": n_particles, "max_iter": max_iterations, "seed": 42},
     )
 
+    # Remove job_results from metrics (too large for compare payload)
     for name in results:
         results[name]["metrics"].pop("job_results", None)
 
-    return jsonify(sanitize(results))
+    # Return in canonical paper order
+    ordered = {s: results[s] for s in SCHEDULER_ORDER if s in results}
+    return jsonify(sanitize(ordered))
 
+
+# ─────────────────────────────────────────────────────────────
+# Entry point (local dev only — Vercel uses the `app` object)
+# ─────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
