@@ -132,6 +132,24 @@ See `notebooks/reproduce_paper_results.ipynb` for a step-by-step walkthrough tha
 
 ---
 
+## Live Demo
+
+🔗 https://qips-demo.vercel.app
+
+ **Note:** This is a serverless deployment on Vercel, so it may have certain limitations. At times, updated values might not reflect immediately.
+
+### 🔄If values are not updating:
+- Perform a **hard refresh** in your browser:
+  - **Windows/Linux:** `Ctrl + Shift + R` or `Ctrl + F5`
+  - **Mac:** `Cmd + Shift + R`
+- Then continue testing the application.
+
+---
+
+## Important
+This is a **demo simulation**.
+For **more accurate and consistent results**, it is recommended to run the project locally.
+
 ## Citation
 
 ```bibtex
